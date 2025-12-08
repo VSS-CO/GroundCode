@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Ultimate Client Playground</title>
+<style>
+  html, body { margin:0; height:100%; width:100%; font-family:sans-serif; display:flex; }
+  #sidebar { width:220px; background:#1e1e1e; color:#ccc; display:flex; flex-direction:column; }
+  #sidebar h3 { margin:0; padding:10px; border-bottom:1px solid #333; font-size:14px; }
+  #file-tree { flex:1; overflow:auto; padding:10px; }
+  .file, .folder { padding:4px 8px; cursor:pointer; border-radius:3px; margin:2px 0; }
+  .file:hover, .folder:hover { background:#333; }
+  .folder > .children { padding-left:10px; display:none; }
+  .toolbar { padding:5px; border-top:1px solid #333; display:flex; gap:4px; }
+  button { flex:1; cursor:pointer; padding:4px; font-size:12px; }
+
+  #main { flex:1; display:flex; flex-direction:column; border-left:1px solid #555; position:relative; }
+  #tabs { display:flex; border-bottom:1px solid #555; background:#2a2a2a; }
+  .tab { padding:6px 10px; cursor:pointer; border-right:1px solid #555; user-select:none; }
+  .tab.active { background:#1e1e1e; font-weight:bold; }
+  #editor-container { flex:1; position:relative; }
+  #editor { width:100%; height:100%; }
+  #preview { width:100%; height:200px; border-top:1px solid #555; }
+  #run-btn { position:absolute; top:8px; right:10px; z-index:100; padding:4px 10px; cursor:pointer; }
+</style>
+
+<script>
+  window.require = { paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs' } };
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js"></script>
+</head>
+<body>
+
+<div id="sidebar">
+  <h3>Files</h3>
+  <div id="file-tree"></div>
+  <div class="toolbar">
+    <button id="new-file">New File</button>
+    <button id="new-folder">New Folder</button>
+  </div>
+</div>
+
+<div id="main">
+  <div id="tabs"></div>
+  <div id="editor-container"><div id="editor"></div></div>
+  <iframe id="preview" sandbox="allow-scripts"></iframe>
+  <button id="run-btn">Run ▶</button>
+</div>
+
+<script type="module">
+let editor;
+let root = { name:'root', type:'folder', children:[] };
+let openTabs = [];
+let currentFile = null;
+
+// Utilities
+function getFileExtension(name) { return name.split('.').pop().toLowerCase(); }
+
+// Render file tree
+function renderTree(node=root, container=document.getElementById('file-tree')) {
+  container.innerHTML = '';
+  function createNodeEl(fileNode) {
+    const el = document.createElement('div');
+    el.textContent = fileNode.name;
+    el.className = fileNode.type;
+    if(fileNode.type==='file') {
+      el.onclick = (e) => { e.stopPropagation(); openFile(fileNode); };
+    } else if(fileNode.type==='folder') {
+      const childrenEl = document.createElement('div'); childrenEl.className='children';
+      fileNode.children.forEach(c=>childrenEl.appendChild(createNodeEl(c)));
+      el.appendChild(childrenEl);
+      el.onclick = (e)=>{ e.stopPropagation(); childrenEl.style.display = childrenEl.style.display==='none'?'block':'none'; };
+    }
+    return el;
+  }
+  node.children.forEach(c=>container.appendChild(createNodeEl(c)));
+}
+
+// Tabs
+function renderTabs() {
+  const tabsDiv = document.getElementById('tabs'); tabsDiv.innerHTML='';
+  openTabs.forEach(file=>{
+    const t = document.createElement('div'); t.className='tab';
+    if(file===currentFile) t.classList.add('active');
+    t.textContent = file.name;
+    t.onclick = ()=>{ switchTab(file); };
+    tabsDiv.appendChild(t);
+  });
+}
+
+function openFile(file) {
+  if(!openTabs.includes(file)) openTabs.push(file);
+  currentFile = file;
+  renderTabs();
+  editor.setValue(file.content||'');
+  // Set language
+  const ext = getFileExtension(file.name);
+  let lang = 'javascript';
+  if(ext==='html') lang='html';
+  else if(ext==='css') lang='css';
+  else if(ext==='ts') lang='typescript';
+  else if(ext==='jsx') lang='javascript';
+  editor.getModel().setValue(file.content||'');
+  monaco.editor.setModelLanguage(editor.getModel(), lang);
+}
+
+function switchTab(file) {
+  currentFile = file;
+  editor.setValue(file.content||'');
+  renderTabs();
+  const ext = getFileExtension(file.name);
+  let lang = 'javascript';
+  if(ext==='html') lang='html';
+  else if(ext==='css') lang='css';
+  else if(ext==='ts') lang='typescript';
+  else if(ext==='jsx') lang='javascript';
+  monaco.editor.setModelLanguage(editor.getModel(), lang);
+}
+
+// Buttons
+document.getElementById('new-file').onclick = ()=>{
+  const name = prompt('File name?'); if(!name) return;
+  const file = { name, type:'file', content:'' };
+  root.children.push(file);
+  renderTree();
+};
+document.getElementById('new-folder').onclick = ()=>{
+  const name = prompt('Folder name?'); if(!name) return;
+  const folder = { name, type:'folder', children:[] };
+  root.children.push(folder);
+  renderTree();
+};
+
+// Monaco
+require(['vs/editor/editor.main'],()=>{
+  editor = monaco.editor.create(document.getElementById('editor'), {
+    value:'',
+    language:'javascript',
+    theme:'vs-dark',
+    automaticLayout:true
+  });
+
+  editor.onDidChangeModelContent(()=>{
+    if(currentFile) currentFile.content = editor.getValue();
+  });
+});
+
+// Run preview
+document.getElementById('run-btn').onclick = ()=>{
+  if(!currentFile) return alert('Open a file to run!');
+  let html='', css='', js='';
+  const ext = getFileExtension(currentFile.name);
+  if(ext==='html') html=currentFile.content;
+  else if(ext==='css') css=currentFile.content;
+  else js=currentFile.content;
+  const full = `<!DOCTYPE html><html><head><style>${css}</style></head><body>${html}<script>${js}<\/script></body></html>`;
+  document.getElementById('preview').srcdoc = full;
+};
+
+renderTree();
+</script>
+</body>
+</html>
