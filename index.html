@@ -1,163 +1,516 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>Ultimate Client Playground</title>
+<meta charset="utf-8" />
+<title>Client Playground — Multi-lang Monaco + Live Preview</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
 <style>
-  html, body { margin:0; height:100%; width:100%; font-family:sans-serif; display:flex; }
-  #sidebar { width:220px; background:#1e1e1e; color:#ccc; display:flex; flex-direction:column; }
-  #sidebar h3 { margin:0; padding:10px; border-bottom:1px solid #333; font-size:14px; }
-  #file-tree { flex:1; overflow:auto; padding:10px; }
-  .file, .folder { padding:4px 8px; cursor:pointer; border-radius:3px; margin:2px 0; }
-  .file:hover, .folder:hover { background:#333; }
-  .folder > .children { padding-left:10px; display:none; }
-  .toolbar { padding:5px; border-top:1px solid #333; display:flex; gap:4px; }
-  button { flex:1; cursor:pointer; padding:4px; font-size:12px; }
-
-  #main { flex:1; display:flex; flex-direction:column; border-left:1px solid #555; position:relative; }
-  #tabs { display:flex; border-bottom:1px solid #555; background:#2a2a2a; }
-  .tab { padding:6px 10px; cursor:pointer; border-right:1px solid #555; user-select:none; }
-  .tab.active { background:#1e1e1e; font-weight:bold; }
-  #editor-container { flex:1; position:relative; }
-  #editor { width:100%; height:100%; }
-  #preview { width:100%; height:200px; border-top:1px solid #555; }
-  #run-btn { position:absolute; top:8px; right:10px; z-index:100; padding:4px 10px; cursor:pointer; }
+  :root{--bg:#0b0f14;--panel:#0f1720;--muted:#9aa6b2;--accent:#7c3aed}
+  html,body{height:100%;margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,Arial;color:#e6eef8;background:linear-gradient(180deg,#061021,#03121b)}
+  .app{display:grid;grid-template-columns:260px 1fr; height:100vh; gap:0}
+  /* Sidebar */
+  #sidebar{background:var(--panel);border-right:1px solid rgba(255,255,255,0.03);display:flex;flex-direction:column}
+  #sidebar header{padding:12px 12px;font-weight:700;display:flex;justify-content:space-between;align-items:center}
+  #file-tree{padding:10px;overflow:auto;flex:1}
+  .node{padding:6px 8px;border-radius:6px;margin:4px 0;cursor:pointer;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .node:hover{background:rgba(255,255,255,0.02)}
+  .folder-name::before{content:'📁 ';margin-right:6px}
+  .file-name::before{content:'📄 ';margin-right:6px}
+  .children{margin-left:12px;display:none}
+  .node.folder.open > .children{display:block}
+  .toolbar{display:flex;padding:8px;border-top:1px solid rgba(255,255,255,0.03);gap:6px}
+  .toolbar button{flex:1;padding:8px;border-radius:6px;border:0;background:#0b1220;color:#dfe7f6;cursor:pointer}
+  /* Main */
+  #main{display:flex;flex-direction:column;position:relative}
+  #tabs{display:flex;gap:6px;padding:8px;background:linear-gradient(180deg,#07121a,#05101a);border-bottom:1px solid rgba(255,255,255,0.03);align-items:center}
+  .tab{padding:6px 10px;background:transparent;border-radius:6px;cursor:pointer;user-select:none;color:#cfe4ff}
+  .tab.active{background:linear-gradient(90deg,rgba(255,255,255,0.02),transparent);font-weight:600}
+  #editor-area{display:flex;flex-direction:column;flex:1;min-height:0} /* min-height for Monaco */
+  #editor{height:calc(100vh - 380px);min-height:200px} /* leave space for preview */
+  #preview{height:320px;border-top:1px solid rgba(255,255,255,0.03);width:100%;background:white}
+  #controls{position:absolute;right:12px;top:12px;display:flex;gap:8px;z-index:10}
+  button.icon{padding:8px 12px;border-radius:8px;border:0;background:linear-gradient(180deg,#24303a,#1b242b);color:#e6f0ff;cursor:pointer}
+  .muted{color:var(--muted);font-size:13px;padding-left:12px}
+  /* small screens */
+  @media (max-width:900px){ .app{grid-template-columns:1fr} #sidebar{display:none} }
 </style>
 
+<!-- Monaco AMD loader path -->
 <script>
-  window.require = { paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs' } };
+  window.require = { paths: { vs: "https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs" } };
 </script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js"></script>
 </head>
 <body>
+<div class="app">
+  <div id="sidebar">
+    <header>
+      <div>Playground</div>
+      <div style="font-size:12px;color:var(--muted)">Monaco</div>
+    </header>
+    <div id="file-tree"></div>
+    <div class="toolbar">
+      <button id="new-file">+ File</button>
+      <button id="new-folder">+ Folder</button>
+      <button id="del">Del</button>
+    </div>
+  </div>
 
-<div id="sidebar">
-  <h3>Files</h3>
-  <div id="file-tree"></div>
-  <div class="toolbar">
-    <button id="new-file">New File</button>
-    <button id="new-folder">New Folder</button>
+  <div id="main">
+    <div id="tabs">
+      <div class="muted">Open files:</div>
+      <div id="tabs-container" style="display:flex;gap:6px;flex:1"></div>
+      <div id="controls">
+        <button id="run" class="icon">Run ▶</button>
+        <button id="toggleAuto" class="icon">Auto: ON</button>
+      </div>
+    </div>
+
+    <div id="editor-area">
+      <div id="editor"></div>
+      <iframe id="preview" sandbox="allow-scripts"></iframe>
+    </div>
   </div>
 </div>
 
-<div id="main">
-  <div id="tabs"></div>
-  <div id="editor-container"><div id="editor"></div></div>
-  <iframe id="preview" sandbox="allow-scripts"></iframe>
-  <button id="run-btn">Run ▶</button>
-</div>
-
 <script type="module">
-let editor;
-let root = { name:'root', type:'folder', children:[] };
-let openTabs = [];
-let currentFile = null;
+/* ===========================
+   In-memory FS & helpers
+   =========================== */
 
-// Utilities
-function getFileExtension(name) { return name.split('.').pop().toLowerCase(); }
+const root = { name: '/', type: 'folder', children: [
+  // starter files
+  { name: 'index.html', type: 'file', content: `<h1>Hello Playground</h1>\n<p>Edit files and see live preview.</p>` },
+  { name: 'styles.css', type: 'file', content: `body{font-family:system-ui,Segoe UI,Roboto,Arial;margin:20px} h1{color:#0b6cff}` },
+  { name: 'script.js', type: 'file', content: `console.log('script.js running');` },
+  { name: 'readme.md', type: 'file', content: `# Welcome\nThis is a client-side playground.` },
+]};
 
-// Render file tree
-function renderTree(node=root, container=document.getElementById('file-tree')) {
-  container.innerHTML = '';
-  function createNodeEl(fileNode) {
-    const el = document.createElement('div');
-    el.textContent = fileNode.name;
-    el.className = fileNode.type;
-    if(fileNode.type==='file') {
-      el.onclick = (e) => { e.stopPropagation(); openFile(fileNode); };
-    } else if(fileNode.type==='folder') {
-      const childrenEl = document.createElement('div'); childrenEl.className='children';
-      fileNode.children.forEach(c=>childrenEl.appendChild(createNodeEl(c)));
-      el.appendChild(childrenEl);
-      el.onclick = (e)=>{ e.stopPropagation(); childrenEl.style.display = childrenEl.style.display==='none'?'block':'none'; };
+let selectedNode = null;    // currently selected node in tree (for create/delete context)
+let currentModel = null;    // Monaco model currently attached to editor
+let openTabs = [];          // array of file nodes opened
+let models = new Map();     // fileName -> monaco model
+let autoRun = true;
+let runDebounceMs = 650;
+let runTimer = null;
+
+/* extension -> monaco language mapping (common ones) */
+const extToLang = {
+  html:'html', htm:'html',
+  css:'css',
+  js:'javascript', mjs:'javascript',
+  ts:'typescript', tsx:'typescript',
+  jsx:'javascript',
+  json:'json',
+  md:'markdown',
+  py:'python',
+  java:'java',
+  c:'c', cpp:'cpp', h:'cpp',
+  cs:'csharp',
+  php:'php',
+  go:'go',
+  rs:'rust',
+  rb:'ruby',
+  sql:'sql',
+  yml:'yaml', yaml:'yaml',
+  sh:'shell',
+  txt:'plaintext'
+};
+
+/* ==============
+   DOM utilities
+   ============== */
+function q(id){ return document.getElementById(id) }
+function debounce(fn, ms){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; }
+
+/* ===========================
+   Render / File Tree UI
+   =========================== */
+function createNodeElement(node, parentArray) {
+  const el = document.createElement('div');
+  el.className = 'node ' + (node.type === 'folder'? 'folder-name' : 'file-name');
+  el.textContent = node.name;
+  el.title = node.name;
+  el.style.display = 'flex';
+  el.style.justifyContent = 'space-between';
+  el.style.alignItems = 'center';
+
+  // left area clickable to open / toggle
+  const left = document.createElement('div');
+  left.style.flex = '1';
+  left.style.overflow = 'hidden';
+  left.style.textOverflow = 'ellipsis';
+  left.style.whiteSpace = 'nowrap';
+  left.textContent = node.name;
+  left.onclick = (e) => {
+    e.stopPropagation();
+    selectedNode = node;
+    highlightSelectedInTree();
+    if(node.type === 'file') openFile(node);
+    else {
+      // toggle folder open class
+      el.classList.toggle('open');
+      childrenContainer.style.display = childrenContainer.style.display === 'block' ? 'none' : 'block';
     }
-    return el;
+  };
+  el.appendChild(left);
+
+  // right area (mini actions)
+  const right = document.createElement('div');
+  right.style.display='flex';
+  right.style.gap='6px';
+
+  const renameBtn = document.createElement('button');
+  renameBtn.textContent='✏️';
+  renameBtn.style.border='0'; renameBtn.style.background='transparent'; renameBtn.style.cursor='pointer';
+  renameBtn.title='Rename';
+  renameBtn.onclick = (e)=>{ e.stopPropagation(); renameNode(node, parentArray); };
+
+  const delBtn = document.createElement('button');
+  delBtn.textContent='🗑️';
+  delBtn.style.border='0'; delBtn.style.background='transparent'; delBtn.style.cursor='pointer';
+  delBtn.title='Delete';
+  delBtn.onclick = (e)=>{ e.stopPropagation(); deleteNode(node, parentArray); };
+
+  if(node !== root) { right.appendChild(renameBtn); right.appendChild(delBtn); }
+  el.appendChild(right);
+
+  // children
+  let childrenContainer = null;
+  if(node.type === 'folder') {
+    childrenContainer = document.createElement('div');
+    childrenContainer.className = 'children';
+    childrenContainer.style.paddingLeft = '8px';
+    node.children.forEach(child => childrenContainer.appendChild(createNodeElement(child, node.children)));
+    el.appendChild(childrenContainer);
   }
-  node.children.forEach(c=>container.appendChild(createNodeEl(c)));
+  return el;
 }
 
-// Tabs
+function renderTree() {
+  const tree = q('file-tree');
+  tree.innerHTML = '';
+  root.children.forEach(n => tree.appendChild(createNodeElement(n, root.children)));
+  highlightSelectedInTree();
+}
+
+function highlightSelectedInTree(){
+  // visual hint for selectedNode: we will add a subtle background to the node with name match
+  const nodes = document.querySelectorAll('#file-tree .node');
+  nodes.forEach(n => n.style.background = 'transparent');
+  if(!selectedNode) return;
+  // find first matching node by name (works for this in-memory simple fs)
+  const matches = Array.from(nodes).filter(el => el.textContent && el.textContent.includes(selectedNode.name));
+  if(matches[0]) matches[0].style.background = 'rgba(124,58,237,0.12)';
+}
+
+/* ===========================
+   File ops: create / delete / rename
+   =========================== */
+function createFileIn(nodeOrParent, name) {
+  const parent = nodeOrParent.type === 'folder' ? nodeOrParent : root;
+  const fname = name || prompt('New file name (e.g. app.js, index.html):');
+  if(!fname) return;
+  parent.children.push({ name: fname, type: 'file', content: '' });
+  renderTree();
+}
+
+function createFolderIn(nodeOrParent, name) {
+  const parent = nodeOrParent.type === 'folder' ? nodeOrParent : root;
+  const fname = name || prompt('Folder name:');
+  if(!fname) return;
+  parent.children.push({ name: fname, type: 'folder', children: [] });
+  renderTree();
+}
+
+function findParentArray(node, cur=root) {
+  if(!cur.children) return null;
+  for(let i=0;i<cur.children.length;i++){
+    if(cur.children[i] === node) return cur.children;
+    if(cur.children[i].type === 'folder') {
+      const res = findParentArray(node, cur.children[i]);
+      if(res) return res;
+    }
+  }
+  return null;
+}
+
+function deleteNode(node, parentArray) {
+  if(!parentArray) parentArray = findParentArray(node);
+  if(!parentArray) return;
+  if(!confirm(`Delete "${node.name}"?`)) return;
+  const i = parentArray.indexOf(node);
+  if(i>=0) parentArray.splice(i,1);
+  // close tab if open
+  const tIndex = openTabs.indexOf(node);
+  if(tIndex>=0) { closeTab(node); }
+  renderTree();
+}
+
+function renameNode(node, parentArray) {
+  const name = prompt('Rename to:', node.name);
+  if(!name) return;
+  node.name = name;
+  // if model exists under old uri, move it
+  if(models.has(node.__modelUri)) {
+    // simplistic: delete mapping — model uri is not changed here because it's internal. We'll keep model but change display name
+  }
+  renderTree();
+}
+
+/* ===========================
+   Tabs + Monaco model management
+   =========================== */
+
+function openFile(node) {
+  if(node.type !== 'file') return;
+  // if already open, switch to it
+  if(!openTabs.includes(node)) openTabs.push(node);
+  renderTabs();
+  attachModelFor(node);
+  currentModel = models.get(node.__modelUri);
+  editor.setModel(currentModel);
+  // place cursor at start
+  editor.revealPosition({ lineNumber: 1, column: 1 });
+  editor.focus();
+}
+
+function closeTab(node) {
+  const idx = openTabs.indexOf(node);
+  if(idx>=0) openTabs.splice(idx,1);
+  // dispose model? we keep model but optionally dispose
+  renderTabs();
+  if(openTabs.length) {
+    const next = openTabs[Math.max(0, idx-1)];
+    attachModelFor(next);
+    editor.setModel(models.get(next.__modelUri));
+  } else {
+    // new empty model
+    const empty = monaco.editor.createModel('', 'plaintext', monaco.Uri.parse('inmemory://model/empty-' + Date.now()));
+    editor.setModel(empty);
+  }
+}
+
 function renderTabs() {
-  const tabsDiv = document.getElementById('tabs'); tabsDiv.innerHTML='';
-  openTabs.forEach(file=>{
-    const t = document.createElement('div'); t.className='tab';
-    if(file===currentFile) t.classList.add('active');
-    t.textContent = file.name;
-    t.onclick = ()=>{ switchTab(file); };
-    tabsDiv.appendChild(t);
+  const tabs = q('tabs-container');
+  tabs.innerHTML = '';
+  openTabs.forEach(node => {
+    const t = document.createElement('div');
+    t.className = 'tab' + (editor && editor.getModel() && editor.getModel().uri.path.endsWith(node.name) ? ' active' : '');
+    t.textContent = node.name;
+    t.title = node.name;
+    t.onclick = ()=> openFile(node);
+    t.oncontextmenu = (e)=>{ e.preventDefault(); // right click to close
+      if(confirm(`Close ${node.name}?`)) closeTab(node);
+    };
+    tabs.appendChild(t);
   });
 }
 
-function openFile(file) {
-  if(!openTabs.includes(file)) openTabs.push(file);
-  currentFile = file;
-  renderTabs();
-  editor.setValue(file.content||'');
-  // Set language
-  const ext = getFileExtension(file.name);
-  let lang = 'javascript';
-  if(ext==='html') lang='html';
-  else if(ext==='css') lang='css';
-  else if(ext==='ts') lang='typescript';
-  else if(ext==='jsx') lang='javascript';
-  editor.getModel().setValue(file.content||'');
-  monaco.editor.setModelLanguage(editor.getModel(), lang);
+/* Monaco model creation. We give each file a stable in-memory URI and store it in node.__modelUri */
+function attachModelFor(node) {
+  if(node.type !== 'file') return;
+  if(!node.__modelUri) {
+    // stable uri based on random + name
+    node.__modelUri = 'inmemory://model/' + btoa(Date.now() + '_' + node.name + Math.random()).replace(/=/g,'');
+  }
+  // if model exists on map, ensure its content matches node.content
+  if(models.has(node.__modelUri)){
+    const model = models.get(node.__modelUri);
+    if(model.getValue() !== node.content) model.setValue(node.content || '');
+    return;
+  }
+  // create new model
+  const ext = (node.name.split('.').pop() || '').toLowerCase();
+  const lang = extToLang[ext] || 'plaintext';
+  const uri = monaco.Uri.parse(node.__modelUri + '/' + node.name);
+  const m = monaco.editor.createModel(node.content || '', lang, uri);
+  // when model changes, write back to node.content
+  m.onDidChangeContent(debounce(()=> {
+    node.content = m.getValue();
+    if(autoRun) scheduleRun();
+  }, 250));
+  models.set(node.__modelUri, m);
 }
 
-function switchTab(file) {
-  currentFile = file;
-  editor.setValue(file.content||'');
-  renderTabs();
-  const ext = getFileExtension(file.name);
-  let lang = 'javascript';
-  if(ext==='html') lang='html';
-  else if(ext==='css') lang='css';
-  else if(ext==='ts') lang='typescript';
-  else if(ext==='jsx') lang='javascript';
-  monaco.editor.setModelLanguage(editor.getModel(), lang);
+/* ===========================
+   Assemble preview HTML
+   =========================== */
+function buildPreviewDocument() {
+  // choose HTML source:
+  // 1) if there is index.html in root or nested, use it
+  // 2) else if any .html file exists, concat them
+  // 3) else build blank html and insert any content from README or body-like files
+  const allFiles = gatherAllFiles(root);
+  const htmlFiles = allFiles.filter(f=>f.name.toLowerCase().endsWith('.html'));
+  const cssFiles = allFiles.filter(f=>f.name.toLowerCase().endsWith('.css'));
+  const jsFiles = allFiles.filter(f=>f.name.toLowerCase().endsWith('.js'));
+  let htmlSource = '';
+  const index = htmlFiles.find(f => f.name.toLowerCase() === 'index.html');
+  if(index) htmlSource = index.content || '';
+  else if(htmlFiles.length) htmlSource = htmlFiles.map(f=>f.content||'').join('\n\n');
+  else {
+    // create a minimal HTML from other pieces (README + body)
+    const readme = allFiles.find(f=>f.name.toLowerCase()==='readme.md');
+    htmlSource = `<div id="app">${readme ? '<pre style="white-space:pre-wrap">'+escapeHtml(readme.content||'')+'</pre>' : '<h1>Empty preview</h1><p>Create an index.html or add HTML files.</p>'}</div>`;
+  }
+
+  // Combine CSS contents in head
+  const cssCombined = cssFiles.map(f=>f.content||'').join('\n\n');
+
+  // Combine JS contents in order
+  const jsCombined = jsFiles.map(f=>f.content||'').join('\n\n');
+
+  // If the HTML includes its own <head> or <body>, we'll inject CSS into head and JS before </body>.
+  let final = htmlSource;
+
+  // If user-provided HTML contains <head> or <html> tags, inject CSS/JS appropriately.
+  if(/<\s*html/i.test(final) || /<\s*head/i.test(final) || /<\s*body/i.test(final)) {
+    // inject CSS into <head> if present
+    if(/<\s*head[^>]*>/i.test(final)) {
+      final = final.replace(/<\s*head[^>]*>/i, match => match + '\n<style>' + cssCombined + '</style>\n');
+    } else {
+      // no head tag but html present — try to inject before <body>
+      final = final.replace(/<\s*body[^>]*>/i, match => '<head><style>' + cssCombined + '</style></head>\n' + match);
+    }
+    // inject JS before closing body
+    if(/<\/\s*body\s*>/i.test(final)) {
+      final = final.replace(/<\/\s*body\s*>/i, match => '<script>' + jsCombined + '<\/script>\n' + match);
+    } else {
+      final += '\n<script>' + jsCombined + '<\/script>';
+    }
+  } else {
+    // plain fragment — wrap
+    const htmlDoc = [
+      '<!doctype html>',
+      '<html>',
+      '<head>',
+      '<meta charset="utf-8">',
+      '<meta name="viewport" content="width=device-width,initial-scale=1">',
+      '<style>' + cssCombined + '</style>',
+      '</head>',
+      '<body>',
+      final,
+      '<script>' + jsCombined + '<\/script>',
+      '</body>',
+      '</html>'
+    ].join('\n');
+    final = htmlDoc;
+  }
+
+  return final;
 }
 
-// Buttons
-document.getElementById('new-file').onclick = ()=>{
-  const name = prompt('File name?'); if(!name) return;
-  const file = { name, type:'file', content:'' };
-  root.children.push(file);
-  renderTree();
-};
-document.getElementById('new-folder').onclick = ()=>{
-  const name = prompt('Folder name?'); if(!name) return;
-  const folder = { name, type:'folder', children:[] };
-  root.children.push(folder);
-  renderTree();
-};
+function escapeHtml(s){ return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"}[c])); }
 
-// Monaco
-require(['vs/editor/editor.main'],()=>{
+function gatherAllFiles(folder) {
+  let out = [];
+  function walk(node) {
+    if(node.type === 'file') out.push(node);
+    else if(node.type === 'folder') node.children.forEach(c => walk(c));
+  }
+  walk(folder);
+  return out;
+}
+
+/* ===========================
+   Run / Auto-run
+   =========================== */
+
+function runPreview() {
+  const doc = buildPreviewDocument();
+  const iframe = q('preview');
+  // use srcdoc
+  iframe.srcdoc = doc;
+}
+
+const scheduleRun = debounce(()=> {
+  runPreview();
+}, runDebounceMs);
+
+function immediateRun() {
+  runPreview();
+}
+
+/* ===========================
+   Monaco load & setup
+   =========================== */
+
+let editor = null;
+require(['vs/editor/editor.main'], () => {
   editor = monaco.editor.create(document.getElementById('editor'), {
-    value:'',
-    language:'javascript',
-    theme:'vs-dark',
-    automaticLayout:true
+    value: '',
+    language: 'javascript',
+    theme: 'vs-dark',
+    automaticLayout: true,
+    minimap: { enabled: false },
+    fontSize: 13,
+    folding: true,
+    glyphMargin: true
   });
 
-  editor.onDidChangeModelContent(()=>{
-    if(currentFile) currentFile.content = editor.getValue();
-  });
+  // initial model (blank) so editor has a model
+  const empty = monaco.editor.createModel('', 'plaintext', monaco.Uri.parse('inmemory://model/empty'));
+  editor.setModel(empty);
+
+  // pre-create models for starter files
+  const allFiles = gatherAllFiles(root);
+  allFiles.forEach(f => attachModelFor(f));
+
+  // open index.html by default if exists
+  const idx = allFiles.find(f=>f.name.toLowerCase()==='index.html');
+  if(idx) openFile(idx);
+
+  renderTree();
+  renderTabs();
+  runPreview();
+
+  // listen for manual run and auto toggle
+  q('run').onclick = immediateRun;
+  q('toggleAuto').onclick = ()=>{
+    autoRun = !autoRun;
+    q('toggleAuto').textContent = 'Auto: ' + (autoRun ? 'ON' : 'OFF');
+  };
 });
 
-// Run preview
-document.getElementById('run-btn').onclick = ()=>{
-  if(!currentFile) return alert('Open a file to run!');
-  let html='', css='', js='';
-  const ext = getFileExtension(currentFile.name);
-  if(ext==='html') html=currentFile.content;
-  else if(ext==='css') css=currentFile.content;
-  else js=currentFile.content;
-  const full = `<!DOCTYPE html><html><head><style>${css}</style></head><body>${html}<script>${js}<\/script></body></html>`;
-  document.getElementById('preview').srcdoc = full;
+/* ===========================
+   Controls wiring
+   =========================== */
+
+q('new-file').onclick = () => {
+  // if a folder is selected, create inside it
+  if(selectedNode && selectedNode.type === 'folder') createFileIn(selectedNode);
+  else createFileIn(root);
 };
 
+q('new-folder').onclick = () => {
+  if(selectedNode && selectedNode.type === 'folder') createFolderIn(selectedNode);
+  else createFolderIn(root);
+};
+
+q('del').onclick = () => {
+  if(!selectedNode) return alert('Select a file or folder to delete from the tree (click its name).');
+  const parent = findParentArray(selectedNode);
+  deleteNode(selectedNode, parent);
+  selectedNode = null;
+  renderTree();
+};
+
+/* keyboard: Ctrl/Cmd+S to save (already saved in memory) and Ctrl+Enter to run */
+window.addEventListener('keydown', (e)=>{
+  if((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's'){ e.preventDefault(); alert('Saved to in-memory FS. (No disk)'); }
+  if((e.ctrlKey || e.metaKey) && e.key === 'Enter'){ e.preventDefault(); immediateRun(); }
+});
+
+/* When models change, update tab label highlighting */
+const tabUpdateLoop = setInterval(()=> {
+  renderTabs();
+}, 600);
+
+/* initial render (tree & tabs) */
 renderTree();
+renderTabs();
+
 </script>
 </body>
 </html>
